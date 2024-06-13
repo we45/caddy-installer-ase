@@ -21,7 +21,7 @@ systemctl stop caddy\nsystemctl disable caddy
 
 # Fetch variables from caddy_templater.py
 echo "Fetching caddy_templater.py"
-wget https://theia-config-files.s3.amazonaws.com/caddy_templater.py
+wget -O caddy_templater.py https://raw.githubusercontent.com/we45/caddy-installer-ase/main/caddy_templater_2.0.py
 chmod +x ./caddy_templater.py
 echo "Fetching variables from caddy_templater.py"
 while test $# -gt 0; do

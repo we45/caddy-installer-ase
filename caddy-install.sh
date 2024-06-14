@@ -67,13 +67,10 @@ if [ "$auth" = true ]; then
         b64_caddy_hash=$(echo -n $caddy_hash | base64)
         echo "base64 hash: $b64_caddy_hash"
         sudo ./caddy_templater.py --dns "$dns" --auth "$auth" --password "$caddy_hash"
-        sleep 5
 else
         echo "AUTH is false."
         sudo ./caddy_templater.py --dns "$dns"
-        sleep 5
 fi
 
 # Remove caddy_templater.py after use
-# echo "Removing caddy_templater.py"
-# sudo /usr/bin/caddy start --config /root/.config/caddy.json & rm ./caddy_templater.py
+rm caddy_templater.py

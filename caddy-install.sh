@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 # Assume dns and other variables are set
-dns="codeserver.ase.sh"
-auth=true
-temp_password="appsec"
+# dns="codeserver.ase.sh"
+# auth=true
+# temp_password="appsec"
 
 Install Caddy
 echo "Installing Caddy"

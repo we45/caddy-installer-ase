@@ -18,7 +18,8 @@ sudo mkdir -p /root/.local/share/code-server/User
 sudo tee /root/.local/share/code-server/User/settings.json <<EOF1
 {
     "workbench.colorTheme": "Default Dark Modern",
-    "workbench.startupEditor": "none"
+    "workbench.startupEditor": "none",
+    "terminal.integrated.defaultProfile.linux": "bash"
 }
 EOF1
 

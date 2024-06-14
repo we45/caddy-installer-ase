@@ -4,7 +4,7 @@ import json
 import argparse
 from sys import exit
 
-caddy_dict = {'apps': {'http': {'servers': {'srv0': {'listen': [':80'],
+caddy_dict = {'apps': {'http': {'servers': {'srv0': {'listen': [':443'],
      'routes': [{'match': [],
        'handle': [{'handler': 'subroute',
          'routes': [{'handle': [{'handler': 'reverse_proxy',

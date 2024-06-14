@@ -64,13 +64,15 @@ if [ "$auth" = true ]; then
         echo "AUTH is true. Generating Caddy hash"
         caddy_hash=$(/usr/bin/caddy hash-password -plaintext "$temp_password")
         echo "caddy_hash: $caddy_hash"
-        sleep 2
-        sudo ./caddy_templater.py --dns "$dns" --auth "$auth" --password "$caddy_hash"
-        sleep 2
+        b64_caddy_hash=$(echo -n $caddy_hash | base64)
+        echo "base64 hash: $b64_caddy_hash"
+        sleep 1
+        sudo ./caddy_templater.py --dns "$dns" --auth "$auth" --password "$b64_caddy_hash"
+        sleep 1
 else
         echo "AUTH is false."
         sudo ./caddy_templater.py --dns "$dns"
-        sleep 2
+        sleep 1
 fi
 
 # Remove caddy_templater.py after use

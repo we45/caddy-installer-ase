@@ -10,7 +10,7 @@ command -v code-server >/dev/null 2>&1 || { echo >&2 "code-server not installed.
 
 # Start code server
 sudo systemctl start code-server@root.service
-sleep 5
+# sleep 5
 
 # Set custom theme
 echo "Setting dark theme for code server"

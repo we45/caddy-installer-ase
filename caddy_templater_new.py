@@ -8,7 +8,7 @@ caddy_dict = {'apps': {'http': {'servers': {'srv0': {'listen': [':80'],
      'routes': [{'match': [],
        'handle': [{'handler': 'subroute',
          'routes': [{'handle': [{'handler': 'reverse_proxy',
-             'upstreams': [{'dial': '127.0.0.1:8080'}]}]}]}],
+             'upstreams': [{'dial': '127.0.0.1:2059'}]}]}]}],
         'terminal': True}]}}}}}
 
 parser = argparse.ArgumentParser(description = "Set caddy template variables for provisioner")

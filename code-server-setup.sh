@@ -50,4 +50,5 @@ EOF3
 # Run code-server
 echo "Running code-server with the new configuration"
 sudo systemctl start code-server@root
+sleep 7
 echo "Setup complete"

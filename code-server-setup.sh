@@ -3,7 +3,7 @@
 # Install code server
 echo "Installing code-server"
 VERSION=4.89.1
-curl -fOL https://github.com/coder/code-server/releases/download/v$VERSION/code-server_${VERSION}_amd64.deb
+curl -fOL https://github.com/coder/code-server/releases/download/v$VERSION/code-server_${VERSION}_amd64.deb #TO-DO move this file to our s3 bucket
 sudo dpkg -i code-server_${VERSION}_amd64.deb
 sudo systemctl enable --now code-server@root
 command -v code-server >/dev/null 2>&1 || { echo >&2 "code-server not installed."; exit 1; }

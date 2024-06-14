@@ -5,7 +5,7 @@
 # auth=true
 # temp_password="appsec"
 
-Install Caddy
+# Install Caddy
 echo "Installing Caddy"
 sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg

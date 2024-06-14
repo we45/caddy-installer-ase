@@ -18,7 +18,8 @@ echo "Setting dark theme for code server"
 sudo mkdir -p /root/.local/share/code-server/User
 sudo tee /root/.local/share/code-server/User/settings.json <<EOF1
 {
-    "workbench.colorTheme": "Default Dark Modern"
+    "workbench.colorTheme": "Default Dark Modern",
+    "workbench.startupEditor": "none"
 }
 EOF1
 

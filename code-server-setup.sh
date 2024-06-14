@@ -7,11 +7,7 @@ curl -fOL https://github.com/coder/code-server/releases/download/v$VERSION/code-
 sudo dpkg -i code-server_${VERSION}_amd64.deb
 sudo systemctl enable --now code-server@root
 command -v code-server >/dev/null 2>&1 || { echo >&2 "code-server not installed."; exit 1; }
-
-# Run code-server
-# echo "Running code-server to populate defaults"
-# sudo systemctl start code-server@root
-# sleep 5
+sleep 5
 
 # Set custom theme
 echo "Setting dark theme for code server"
@@ -50,5 +46,5 @@ EOF3
 # Run code-server
 echo "Running code-server with the new configuration"
 sudo systemctl start code-server@root
-sleep 7
+sleep 15
 echo "Setup complete"

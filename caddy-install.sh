@@ -5,19 +5,14 @@
 # auth=true
 # temp_password="appsec"
 
-# Install Caddy
-echo "Installing Caddy"
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install caddy
+# Check if Caddy is installed
 echo "Checking if Caddy is installed"
 command -v caddy >/dev/null 2>&1 || { echo >&2 "Caddy not installed."; exit 1; }
 echo "Caddy installed successfully."
 
 # Ensure Caddy is stopped and disabled
-sudo systemctl stop caddy\nsystemctl disable caddy
+sudo systemctl stop caddy
+sudo systemctl disable caddy
 
 # Fetch variables from caddy_templater.py
 echo "Fetching caddy_templater.py"
@@ -64,8 +59,6 @@ if [ "$auth" = true ]; then
         echo "AUTH is true. Generating Caddy hash"
         caddy_hash=$(/usr/bin/caddy hash-password --plaintext "$temp_password")
         echo "caddy_hash: $caddy_hash"
-        b64_caddy_hash=$(echo -n $caddy_hash | base64)
-        echo "base64 hash: $b64_caddy_hash"
         sudo ./caddy_templater.py --dns "$dns" --auth "$auth" --password "$caddy_hash"
 else
         echo "AUTH is false."

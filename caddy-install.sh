@@ -62,7 +62,7 @@ if [ "$auth" = true ]; then
         echo "PASSWORD : $temp_password"
         echo "AUTHENTICATION : $auth"
         echo "AUTH is true. Generating Caddy hash"
-        caddy_hash=$(/usr/bin/caddy hash-password -plaintext "$temp_password")
+        caddy_hash=$(/usr/bin/caddy hash-password --plaintext "$temp_password")
         echo "caddy_hash: $caddy_hash"
         b64_caddy_hash=$(echo -n $caddy_hash | base64)
         echo "base64 hash: $b64_caddy_hash"

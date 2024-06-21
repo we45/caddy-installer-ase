@@ -1,6 +1,3 @@
-variables:
-  GIT_DEPTH: 4
-
 stages:
   - setup
   - transfer

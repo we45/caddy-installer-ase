@@ -16,6 +16,8 @@ sudo systemctl disable caddy
 
 # Fetch variables from caddy_templater.py
 echo "Fetching caddy_templater.py"
+wget -O caddy_templater.py https://raw.githubusercontent.com/we45/caddy-installer-ase/refs/heads/main/ubuntu_caddy_templater.py
+chmod +x ./caddy_templater.py
 echo "Fetching variables from caddy_templater.py"
 while test $# -gt 0; do
         case "$1" in

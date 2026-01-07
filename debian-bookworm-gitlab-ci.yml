@@ -9,6 +9,7 @@ create_vm:
   stage: setup
   allow_failure: false
   variables:
+    VM_USER: "root" 
     SETUP_COMMAND: 'git clone ${CI_REPOSITORY_URL} && /bin/bash +x /root/${CI_PROJECT_NAME}/setup.sh'
     CLEANUP_COMMAND: 'rm /root/${CI_PROJECT_NAME}/setup.sh && rm /root/${CI_PROJECT_NAME}/.gitlab-ci.yml && rm /root/${CI_PROJECT_NAME}/.gitignore && rm /root/${CI_PROJECT_NAME}/README.md && rm -rf /root/${CI_PROJECT_NAME}/.git && rm -f /root/${CI_PROJECT_NAME}/.cursorrules && history -c'
     CHALLENGE_CLEAN_DIRECTORY: python3 -c 'import os;import shutil;shutil.rmtree("/root/${CI_PROJECT_NAME}/validators") if os.path.exists("/root/${CI_PROJECT_NAME}/validators") else print("no `validators` directory found")'
@@ -16,27 +17,53 @@ create_vm:
     CHALLENGE_CLEAN_RESULTS_JSON: python3 -c 'import os;os.remove("/root/${CI_PROJECT_NAME}/results.json") if os.path.isfile("/root/${CI_PROJECT_NAME}/results.json") else print("no `results.json` file found")'
     CHALLENGE_CLEAN_HISTORY: 'history -c'
   before_script:
-    - apt update
-    - apt install -y wget git
+    - DEBIAN_FRONTEND=noninteractive
+    - apt update -y
+    - apt-get update -y && apt-get install -y wget git openssh-client
     - wget -O chit https://s3.amazonaws.com/theia-config-files/chit && mv chit /usr/bin/ && chmod +x /usr/bin/chit
     - wget -O create_image.py https://s3.amazonaws.com/theia-config-files/create_image.py 
     - /usr/bin/chit configure -e gitlab@we45.com -t ${CHIT_TOKEN}
   script:
+    # 1. Authenticate and Configure
     - gcloud auth activate-service-account --key-file $SECONDARY_GOOGLE_CREDS
     - gcloud config set project $SECONDARY_GCP_PROJECT_ID
+
+    # 2. Generate a temporary, job-specific SSH key
+    # We generate it in the standard .ssh directory. -N "" ensures no passphrase. -f forces the file path.
+    - mkdir -p ~/.ssh
+    - ssh-keygen -t rsa -f ~/.ssh/google_compute_engine -N "" -C "${VM_USER}" -q
+
+    # 3. Prepare the public key string for metadata
+    # The public key is captured into a variable with the format "username:public-key-content"
+    - export SSH_KEY_VALUE="${VM_USER}:$(cat ~/.ssh/google_compute_engine.pub)"
+
+    # 4. Cleanup old instances (if any)
     - gcloud beta compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE} || true
-    - gcloud beta compute instances create ${CI_PROJECT_NAME} --zone=${ZONE} --machine-type=${IMG_CONFIG} --subnet=image-vpc --network-tier=STANDARD --maintenance-policy=MIGRATE --no-service-account --no-scopes --tags=http-server,https-server --image=ase-deb-12-final --image-project=${SECONDARY_GCP_PROJECT_ID} --boot-disk-size=10GB --boot-disk-type=pd-ssd --boot-disk-device-name=${CI_PROJECT_NAME} --no-shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring --reservation-affinity=any --metadata cos-update-strategy=update_disabled
+
+    # 5. Create VM with INSTANCE-SPECIFIC metadata
+    # 'block-project-ssh-keys=TRUE' isolates this VM to test this credential injection method.
+    # The SSH key is injected directly into this VM's 'ssh-keys' metadata instead of relying on project-wide metadata.
+    - gcloud beta compute instances create ${CI_PROJECT_NAME} --zone=${ZONE} --machine-type=${IMG_CONFIG} --subnet=image-vpc --network-tier=STANDARD --maintenance-policy=MIGRATE --no-service-account --no-scopes --tags=http-server,https-server --image=ase-deb-12-upgraded --image-project=${SECONDARY_GCP_PROJECT_ID} --boot-disk-size=10GB --boot-disk-type=pd-ssd --boot-disk-device-name=${CI_PROJECT_NAME} --no-shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring --reservation-affinity=any --metadata cos-update-strategy=update_disabled,block-project-ssh-keys=TRUE,ssh-keys="${SSH_KEY_VALUE}"
+    
     - sleep 45
-    - gcloud compute ssh --zone ${ZONE} ${CI_PROJECT_NAME} -- ${SETUP_COMMAND}
-    - gcloud compute ssh --zone ${ZONE} ${CI_PROJECT_NAME} -- ${CLEANUP_COMMAND}
-    - gcloud compute ssh --zone ${ZONE} ${CI_PROJECT_NAME} -- ${CHALLENGE_CLEAN_DIRECTORY}
-    - gcloud compute ssh --zone ${ZONE} ${CI_PROJECT_NAME} -- ${CHALLENGE_CLEAN_SOLUTIONS}
-    - gcloud compute ssh --zone ${ZONE} ${CI_PROJECT_NAME} -- ${CHALLENGE_CLEAN_HISTORY}
+
+    # 6. Connect using the local key file
+    # The --ssh-key-file flag tells gcloud to use our generated key.
+    # gcloud will see this key matches the Instance Metadata and will NOT touch Project Metadata.
+    - gcloud compute ssh --zone ${ZONE} ${VM_USER}@${CI_PROJECT_NAME} --ssh-key-file=~/.ssh/google_compute_engine -- ${SETUP_COMMAND}
+    - gcloud compute ssh --zone ${ZONE} ${VM_USER}@${CI_PROJECT_NAME} --ssh-key-file=~/.ssh/google_compute_engine -- ${CLEANUP_COMMAND}
+    - gcloud compute ssh --zone ${ZONE} ${VM_USER}@${CI_PROJECT_NAME} --ssh-key-file=~/.ssh/google_compute_engine -- ${CHALLENGE_CLEAN_DIRECTORY}
+    - gcloud compute ssh --zone ${ZONE} ${VM_USER}@${CI_PROJECT_NAME} --ssh-key-file=~/.ssh/google_compute_engine -- ${CHALLENGE_CLEAN_SOLUTIONS}
+    - gcloud compute ssh --zone ${ZONE} ${VM_USER}@${CI_PROJECT_NAME} --ssh-key-file=~/.ssh/google_compute_engine -- ${CHALLENGE_CLEAN_HISTORY}
+    
+    # 7. Cleanup and Image Creation
     - gcloud beta compute instances stop ${CI_PROJECT_NAME} --zone=${ZONE}
-    - gcloud beta compute images delete ${CI_PROJECT_NAME} || true
+    - gcloud beta compute images delete ${CI_PROJECT_NAME} --quiet || true
     - gcloud beta compute images create ${CI_PROJECT_NAME} --source-disk=${CI_PROJECT_NAME} --source-disk-zone=${ZONE} --storage-location=us
-    - gcloud beta compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE}
+    - gcloud beta compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE} --quiet
     - echo "done"
+    
+    # 8. Post artifacts and notifications
     - python3 create_image.py --name "${CI_PROJECT_NAME}" --email "${GITLAB_USER_EMAIL}" --url ${CI_PROJECT_URL}
     - /usr/bin/chit create image -f ./image.json
   artifacts:
@@ -52,8 +79,9 @@ transfer_vm:
   stage: transfer
   allow_failure: false
   before_script:
-    - apt update
-    - apt install -y curl
+    - DEBIAN_FRONTEND=noninteractive
+    - apt update -y
+    - apt update -y && apt install -y curl
   script:
     - gcloud auth activate-service-account --key-file $SECONDARY_GOOGLE_CREDS
     - gcloud config set project $SECONDARY_GCP_PROJECT_ID

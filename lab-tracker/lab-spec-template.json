@@ -1,0 +1,27 @@
+{
+  "lab_id": "your-lab-slug",
+  "lab_version": "1.0.0",
+  "title": "Your Lab Title",
+  "steps": [
+    {
+      "id": "step_1",
+      "description": "Description of what the user should do",
+      "match_type": "argv_prefix",
+      "match_pattern": "command to match",
+      "requires_success": true,
+      "min_times": 1
+    },
+    {
+      "id": "step_2",
+      "description": "Another step with regex matching",
+      "match_type": "regex",
+      "match_pattern": "curl.*http.*endpoint",
+      "requires_success": false,
+      "min_times": 1
+    }
+  ],
+  "completion": {
+    "policy": "all_steps"
+  }
+}
+

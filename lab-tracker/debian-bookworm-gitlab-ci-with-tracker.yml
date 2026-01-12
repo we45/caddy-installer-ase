@@ -1,0 +1,199 @@
+# =============================================================================
+# GitLab CI/CD Pipeline for Lab Image Creation
+# =============================================================================
+# This pipeline creates lab-specific GCP images with command tracking enabled.
+#
+# Requirements:
+#   - Base image with lab tracker pre-installed (ase-deb-12-upgraded family)
+#   - Lab repo contains: setup.sh (required), lab-spec.json (optional)
+#
+# CI Variables needed:
+#   - SECONDARY_GOOGLE_CREDS: GCP service account JSON
+#   - SECONDARY_GCP_PROJECT_ID: GCP project for building images
+#   - PRIMARY_GCP_PROJECT_ID: GCP project for production images
+#   - JWT_SECRET: HS256 secret for signing lab JWTs
+#   - ZONE: GCP zone (e.g., us-central1-a)
+#   - IMG_CONFIG: Machine type (e.g., e2-medium)
+#   - CHIT_TOKEN: Token for chit tool
+#   - SLACK_WEBHOOK_URL: Slack webhook for notifications
+#
+# =============================================================================
+
+stages:
+  - setup
+  - transfer
+
+# =============================================================================
+# Stage 1: Create Lab Image
+# =============================================================================
+create_vm:
+  image:
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:latest
+    entrypoint: [""]
+  stage: setup
+  allow_failure: false
+  
+  variables:
+    VM_USER: "root"
+    # URL to platform scripts
+    SCRIPTS_REPO: "https://raw.githubusercontent.com/we45/caddy-installer-ase/refs/heads/main/lab-tracker"
+    
+  before_script:
+    - DEBIAN_FRONTEND=noninteractive
+    - apt update -y
+    - apt-get update -qq
+    - apt-get install -y -qq wget git openssh-client > /dev/null
+    - wget -q -O chit https://s3.amazonaws.com/theia-config-files/chit && mv chit /usr/bin/ && chmod +x /usr/bin/chit
+    - wget -q -O create_image.py https://s3.amazonaws.com/theia-config-files/create_image.py
+    - /usr/bin/chit configure -e gitlab@we45.com -t ${CHIT_TOKEN}
+
+  script:
+    # =========================================
+    # 1. Authenticate with GCP
+    # =========================================
+    - echo "Authenticating with GCP..."
+    - gcloud auth activate-service-account --key-file $SECONDARY_GOOGLE_CREDS
+    - gcloud config set project $SECONDARY_GCP_PROJECT_ID
+
+    # =========================================
+    # 2. Generate temporary SSH key
+    # =========================================
+    - echo "Generating SSH key..."
+    - mkdir -p ~/.ssh
+    - ssh-keygen -t rsa -f ~/.ssh/google_compute_engine -N "" -C "${VM_USER}" -q
+    - export SSH_KEY_VALUE="${VM_USER}:$(cat ~/.ssh/google_compute_engine.pub)"
+
+    # =========================================
+    # 3. Cleanup old instances
+    # =========================================
+    - echo "Cleaning up old instances..."
+    - gcloud compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE} --quiet 2>/dev/null || true
+
+    # =========================================
+    # 4. Create VM from base image family
+    # =========================================
+    - echo "Creating VM..."
+    - >
+      gcloud compute instances create ${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --machine-type=${IMG_CONFIG}
+      --subnet=image-vpc
+      --network-tier=STANDARD
+      --maintenance-policy=MIGRATE
+      --no-service-account
+      --no-scopes
+      --tags=http-server,https-server
+      --image-family=ase-deb-images
+      --image-project=${SECONDARY_GCP_PROJECT_ID}
+      --boot-disk-size=10GB
+      --boot-disk-type=pd-ssd
+      --boot-disk-device-name=${CI_PROJECT_NAME}
+      --no-shielded-secure-boot
+      --shielded-vtpm
+      --shielded-integrity-monitoring
+      --reservation-affinity=any
+      --metadata=cos-update-strategy=update_disabled,block-project-ssh-keys=TRUE,ssh-keys="${SSH_KEY_VALUE}"
+    
+    - echo "Waiting for VM to be ready..."
+    - sleep 45
+
+    # =========================================
+    # 5. Clone lab repository
+    # =========================================
+    - echo "Cloning lab repository..."
+    - >
+      gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --ssh-key-file=~/.ssh/google_compute_engine
+      --command="git clone ${CI_REPOSITORY_URL} /root/${CI_PROJECT_NAME}"
+
+    # =========================================
+    # 6. Run lab setup + tracker configuration
+    # =========================================
+    - echo "Running lab setup and tracker configuration..."
+    - >
+      gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --ssh-key-file=~/.ssh/google_compute_engine
+      --command="curl -fsSL ${SCRIPTS_REPO}/lab-image-setup.sh | bash -s -- '${CI_PROJECT_NAME}' '${JWT_SECRET}'"
+
+    # =========================================
+    # 7. Challenge-specific cleanup (validators, solutions)
+    # =========================================
+    - echo "Cleaning up challenge files..."
+    - >
+      gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --ssh-key-file=~/.ssh/google_compute_engine
+      --command="rm -rf /root/${CI_PROJECT_NAME}/validators 2>/dev/null || true"
+    - >
+      gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --ssh-key-file=~/.ssh/google_compute_engine
+      --command="rm -f /root/${CI_PROJECT_NAME}/solution.md /root/${CI_PROJECT_NAME}/results.json 2>/dev/null || true"
+
+    # =========================================
+    # 8. Final cleanup for image capture
+    # =========================================
+    - echo "Running final cleanup..."
+    - >
+      gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME}
+      --zone=${ZONE}
+      --ssh-key-file=~/.ssh/google_compute_engine
+      --command="curl -fsSL ${SCRIPTS_REPO}/lab-image-cleanup.sh | bash -s -- '${CI_PROJECT_NAME}'"
+
+    # =========================================
+    # 9. Create GCP image
+    # =========================================
+    - echo "Creating GCP image..."
+    - gcloud compute instances stop ${CI_PROJECT_NAME} --zone=${ZONE}
+    - gcloud compute images delete ${CI_PROJECT_NAME} --quiet 2>/dev/null || true
+    - >
+      gcloud compute images create ${CI_PROJECT_NAME}
+      --source-disk=${CI_PROJECT_NAME}
+      --source-disk-zone=${ZONE}
+      --storage-location=us
+
+    # =========================================
+    # 10. Cleanup and post-process
+    # =========================================
+    - gcloud compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE} --quiet
+    - echo "Image created successfully: ${CI_PROJECT_NAME}"
+    
+    - python3 create_image.py --name "${CI_PROJECT_NAME}" --email "${GITLAB_USER_EMAIL}" --url ${CI_PROJECT_URL}
+    - /usr/bin/chit create image -f ./image.json
+
+  artifacts:
+    paths: [image.json]
+    expire_in: never
+
+
+# =============================================================================
+# Stage 2: Transfer Image to Production (Manual)
+# =============================================================================
+transfer_vm:
+  image: 
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:latest
+    entrypoint: [""]
+  stage: transfer
+  allow_failure: false
+  
+  variables:
+    SLACK_MESSAGE: '{"text":"${GITLAB_USER_EMAIL} transferred the ${CI_PROJECT_NAME} image to Primary GCP! <$CI_PROJECT_URL|Click here to view the pipeline>!"}'
+  
+  before_script:
+    - DEBIAN_FRONTEND=noninteractive
+    - apt-get update -qq && apt-get install -y -qq curl > /dev/null
+
+  script:
+    - gcloud auth activate-service-account --key-file $SECONDARY_GOOGLE_CREDS
+    - gcloud config set project $SECONDARY_GCP_PROJECT_ID
+    - gcloud compute --project=$PRIMARY_GCP_PROJECT_ID images delete ${CI_PROJECT_NAME} --quiet 2>/dev/null || true
+    - >
+      gcloud compute --project=$PRIMARY_GCP_PROJECT_ID images create ${CI_PROJECT_NAME}
+      --source-image=${CI_PROJECT_NAME}
+      --source-image-project=$SECONDARY_GCP_PROJECT_ID
+    - curl -X POST --data-urlencode "payload=$SLACK_MESSAGE" $SLACK_WEBHOOK_URL
+  
+  when: manual
+

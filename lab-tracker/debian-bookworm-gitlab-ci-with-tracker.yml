@@ -37,10 +37,11 @@ create_vm:
   allow_failure: false
   
   variables:
+    GIT_DEPTH: "1"
     VM_USER: "root"
     # URL to platform scripts
     SCRIPTS_REPO: "https://raw.githubusercontent.com/we45/caddy-installer-ase/refs/heads/main/lab-tracker"
-    
+
   before_script:
     - DEBIAN_FRONTEND=noninteractive
     - apt update -y
@@ -86,17 +87,13 @@ create_vm:
     - gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME} --zone=${ZONE} --ssh-key-file=~/.ssh/google_compute_engine --command="rm -rf /root/${CI_PROJECT_NAME}/validators 2>/dev/null || true"
     - gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME} --zone=${ZONE} --ssh-key-file=~/.ssh/google_compute_engine --command="rm -f /root/${CI_PROJECT_NAME}/solution.md /root/${CI_PROJECT_NAME}/results.json 2>/dev/null || true"
 
-    # 8. Final cleanup for image capture
-    - echo "Running final cleanup..."
-    - gcloud compute ssh ${VM_USER}@${CI_PROJECT_NAME} --zone=${ZONE} --ssh-key-file=~/.ssh/google_compute_engine --command="curl -fsSL ${SCRIPTS_REPO}/lab-image-cleanup.sh | bash -s -- '${CI_PROJECT_NAME}'"
-
-    # 9. Create GCP image
+    # 8. Create GCP image
     - echo "Creating GCP image..."
     - gcloud compute instances stop ${CI_PROJECT_NAME} --zone=${ZONE}
     - gcloud compute images delete ${CI_PROJECT_NAME} --quiet 2>/dev/null || true
     - gcloud compute images create ${CI_PROJECT_NAME} --source-disk=${CI_PROJECT_NAME} --source-disk-zone=${ZONE} --storage-location=us
 
-    # 10. Cleanup and post-process
+    # 9. Cleanup and post-process
     - gcloud compute instances delete ${CI_PROJECT_NAME} --zone=${ZONE} --quiet
     - echo "Image created successfully - ${CI_PROJECT_NAME}"
     - python3 create_image.py --name "${CI_PROJECT_NAME}" --email "${GITLAB_USER_EMAIL}" --url ${CI_PROJECT_URL}

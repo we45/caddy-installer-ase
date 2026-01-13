@@ -22,6 +22,9 @@
 #
 # =============================================================================
 
+variables:
+  GIT_DEPTH: "1"
+
 stages:
   - setup
   - transfer
@@ -37,7 +40,6 @@ create_vm:
   allow_failure: false
   
   variables:
-    GIT_DEPTH: "1"
     VM_USER: "root"
     # URL to platform scripts
     SCRIPTS_REPO: "https://raw.githubusercontent.com/we45/caddy-installer-ase/refs/heads/main/lab-tracker"

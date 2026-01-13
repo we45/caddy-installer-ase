@@ -2,30 +2,37 @@
 
 Scripts for integrating the ASE Lab Command Tracker into the lab image CI pipeline.
 
+> **See also:** [Main README](../README.md) for versioning, CI includes, and variable reference.
+
 ## Overview
 
 These scripts automate the setup of the lab command tracker during CI image builds:
 
-1. **`lab-image-setup.sh`** - Runs lab setup + configures tracker
-2. **`lab-image-cleanup.sh`** - Prepares VM for image capture
-3. **`lab-spec-template.json`** - Template for lab authors
+| File | Purpose |
+| ------ | --------- |
+| `debian-bookworm-gitlab-ci-with-tracker.yml` | GitLab CI pipeline template |
+| `lab-image-setup.sh` | Runs lab setup + configures tracker |
+| `lab-image-cleanup.sh` | Prepares VM for image capture |
+| `lab-spec-template.json` | Template for lab authors |
 
 ## How It Works
 
-```bash
+```txt
 ┌─────────────────────────────────────────────────────────────┐
 │                     CI Pipeline Flow                        │
 ├─────────────────────────────────────────────────────────────┤
-│ 1. Create VM from base image (ase-deb-images)               │
+│ 1. Create VM from base image (ase-deb-images family)        │
 │                         ↓                                   │
 │ 2. Clone lab repo containing:                               │
 │    - setup.sh (required)                                    │
 │    - lab-spec.json (optional, enables tracking)             │
 │                         ↓                                   │
 │ 3. Run lab-image-setup.sh                                   │
+│    ├── Validates required files                             │
 │    ├── Executes lab's setup.sh                              │
+│    ├── Removes repo metadata from image                     │
 │    ├── Installs lab-spec.json (if present)                  │
-│    ├── Generates lab-specific JWT                           │
+│    ├── Installs placeholder JWT                             │
 │    └── Verifies tracker starts                              │
 │                         ↓                                   │
 │ 4. Run lab-image-cleanup.sh                                 │
@@ -41,7 +48,7 @@ These scripts automate the setup of the lab command tracker during CI image buil
 Every lab repo **must** contain:
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `setup.sh` | Lab-specific environment setup script |
 | `README.md` | Lab documentation |
 | `.gitignore` | Git ignore rules |
@@ -82,16 +89,16 @@ Every lab repo **must** contain:
 ### Match Types
 
 | Type | Description | Example Pattern |
-|------|-------------|-----------------|
+| ------ | ------------- | ----------------- |
+| `exact` | Exact string match | `cat /etc/passwd` |
 | `argv_prefix` | Command starts with these words | `python3 app.py` |
 | `regex` | Regular expression match | `curl.*--data.*login` |
-| `exact` | Exact string match | `cat /etc/passwd` |
-| `contains_tokens` | All words present (exact match) | `nmap,-sV,-p` |
+| `contains_tokens` | All tokens present (comma-separated) | `nmap,-sV,-p` |
 
 ### Step Options
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | `id` | string | yes | Unique step identifier |
 | `description` | string | no | Human-readable description |
 | `match_type` | string | yes | One of: exact, argv_prefix, contains_tokens, regex |
@@ -107,21 +114,28 @@ Every lab repo **must** contain:
 - Set `requires_success: false` for commands that may fail (e.g., exploit attempts)
 - Test your patterns locally before committing
 
-## CI Variables Required
+## Using This Pipeline
 
-| Variable | Description |
-|----------|-------------|
-| `JWT_SECRET` | HS256 signing secret for generating lab JWTs |
-| `SCRIPTS_REPO` | Raw URL to this scripts repo |
+### Include in Your Lab's `.gitlab-ci.yml`
 
-## Script URLs
+```yaml
+# Use raw GitHub URL (pin to main or a specific tag/commit)
+include: https://raw.githubusercontent.com/we45/caddy-installer-ase/main/lab-tracker/debian-bookworm-gitlab-ci-with-tracker.yml
 
-When hosted on GitHub, use raw URLs:
-
+# Or pin to a specific tag for stability:
+# include: https://raw.githubusercontent.com/we45/caddy-installer-ase/v1.0.0/lab-tracker/debian-bookworm-gitlab-ci-with-tracker.yml
 ```
-https://raw.githubusercontent.com/we45/caddy-installer-ase/main/lab-tracker/lab-image-setup.sh
-https://raw.githubusercontent.com/we45/caddy-installer-ase/main/lab-tracker/lab-image-cleanup.sh
-```
+
+### Required CI Variables
+
+See [main README](../README.md#required-ci-variables) for the full list.
+
+### Script URLs
+
+The pipeline fetches scripts from:
+
+- Lab Image Setup: <https://raw.githubusercontent.com/we45/caddy-installer-ase/main/lab-tracker/lab-image-setup.sh>
+- Lab Image Cleanup: <https://raw.githubusercontent.com/we45/caddy-installer-ase/main/lab-tracker/lab-image-cleanup.sh>
 
 ## Testing Locally
 

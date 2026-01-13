@@ -5,11 +5,11 @@
 # This script is called during CI to:
 #   1. Run the lab's own setup.sh (lab-specific environment setup)
 #   2. Install the lab-spec.json for command tracking
-#   3. Generate a lab-specific JWT token
+#   3. Install a placeholder JWT (real JWT injected by orchestrator at runtime)
 #   4. Verify the tracker agent starts correctly
 #   5. Prepare for image capture
 #
-# Usage: lab-image-setup.sh <project_name> <jwt_secret>
+# Usage: lab-image-setup.sh <project_name>
 #
 # Expects:
 #   - Lab repo cloned at /root/<project_name>
@@ -24,7 +24,6 @@
 set -e
 
 PROJECT_NAME="$1"
-JWT_SECRET="$2"
 REPO_DIR="/root/${PROJECT_NAME}"
 
 # Colors for output
@@ -39,7 +38,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Validate arguments
 if [[ -z "$PROJECT_NAME" ]]; then
-    log_error "Usage: $0 <project_name> <jwt_secret>"
+    log_error "Usage: $0 <project_name>"
     exit 1
 fi
 
@@ -150,59 +149,19 @@ cp lab-spec.json /opt/appsecengineer/labs/current.json
 log_info "Lab spec installed"
 
 # ============================================
-# STEP 5: Generate lab-specific JWT token
+# STEP 5: Install placeholder JWT token
 # ============================================
 echo ""
-echo "[5/7] Generating JWT token..."
+echo "[5/7] Installing placeholder JWT token..."
 
-if [[ -z "$JWT_SECRET" ]]; then
-    log_warn "JWT_SECRET not provided - using placeholder token"
-    echo "placeholder-token" > /etc/ase-lab-agent/lab_token.jwt
-else
-    JWT_TOKEN=$(python3 << PYEOF
-import json, hmac, hashlib, base64, time, sys
+# Create a dummy JWT for CI verification
+# The orchestrator will replace this with a real token at VM startup
+DUMMY_JWT="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjaS10ZXN0IiwibGFiX2lkIjoiJHtMQUJfSUR9IiwiaWF0IjowLCJleHAiOjk5OTk5OTk5OTl9.placeholder"
 
-secret = """${JWT_SECRET}"""
-lab_id = """${LAB_ID}"""
-now = int(time.time())
-
-header = {"alg": "HS256", "typ": "JWT"}
-payload = {
-    "sub": "lab-vm",
-    "lab_id": lab_id,
-    "lab_instance_id": "baked-image",
-    "vm_id": "image-build",
-    "iat": now,
-    "exp": now + 86400 * 1825  # 5 years expiry for baked images
-}
-
-def b64url(data):
-    return base64.urlsafe_b64encode(
-        json.dumps(data, separators=(',', ':')).encode()
-    ).rstrip(b'=').decode()
-
-try:
-    unsigned = f"{b64url(header)}.{b64url(payload)}"
-    sig = base64.urlsafe_b64encode(
-        hmac.new(secret.encode(), unsigned.encode(), hashlib.sha256).digest()
-    ).rstrip(b'=').decode()
-    print(f"{unsigned}.{sig}")
-except Exception as e:
-    print(f"ERROR: {e}", file=sys.stderr)
-    sys.exit(1)
-PYEOF
-)
-
-    if [[ -z "$JWT_TOKEN" ]] || [[ "$JWT_TOKEN" == ERROR:* ]]; then
-        log_error "Failed to generate JWT token"
-        exit 1
-    fi
-
-    echo "$JWT_TOKEN" > /etc/ase-lab-agent/lab_token.jwt
-fi
-
+echo "$DUMMY_JWT" > /etc/ase-lab-agent/lab_token.jwt
 chmod 600 /etc/ase-lab-agent/lab_token.jwt
-log_info "JWT token installed"
+
+log_info "Placeholder JWT installed"
 
 # ============================================
 # STEP 6: Start and verify tracker
@@ -251,7 +210,7 @@ echo "  Lab ID:        ${LAB_ID}"
 echo "  Title:         ${LAB_TITLE}"
 echo "  Steps:         ${STEP_COUNT}"
 echo "  Lab Spec:      /opt/appsecengineer/labs/current.json"
-echo "  JWT Token:     /etc/ase-lab-agent/lab_token.jwt"
+echo "  JWT Token:     Placeholder"
 echo "  Agent:         Will auto-start on VM boot"
 echo "----------------------------------------------"
 echo ""
